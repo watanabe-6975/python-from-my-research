@@ -156,6 +156,76 @@ plt.show()
 print("保存した:", (outdir / "ch03_log_axis.png").relative_to(ROOT))
 
 ##MD
+## 第3章の MATLAB ↔ Python 対応
+
+| やりたいこと | MATLAB | Python |
+|---|---|---|
+| 図を用意する | `figure` | `fig, ax = plt.subplots()` |
+| 線を引く | `plot(x, y)` | `ax.plot(x, y)` |
+| 重ねて描く | `hold on` | 何もしなくても同じ `ax` に重なる |
+| 軸の名前 | `xlabel('A')` | `ax.set_xlabel("A")` |
+| 凡例 | `legend('a', 'b')` | `ax.plot(..., label="a")` のあと `ax.legend()` |
+| 格子 | `grid on` | `ax.grid()` |
+| 並べる | `subplot(1, 2, 1)` | `fig, ax = plt.subplots(1, 2)` のあと `ax[0]` |
+| 2次元の表を色で | `imagesc` / `pcolor` | `ax.pcolormesh(横, 縦, 表)` |
+| 色の目盛り | `colorbar` | `fig.colorbar(pc, ax=ax)` |
+| 対数軸 | `semilogx(x, y)` | `ax.set_xscale("log")` |
+| 保存 | `exportgraphics(gcf, 'a.png')` | `fig.savefig("a.png", dpi=150)` |
+
+全章の分をまとめたものは [`対応表.md`](../対応表.md) にあります。
+
+##MD
+## 穴埋め練習
+
+2つの成分 sin(Ω₁τ) と sin(Ω₂τ) を、左右に並べた2枚のグラフに描きます（`tau` は 3.4 のセルで作ったものを使います）。
+
+##CODE
+# 穴埋め：___ を埋めてから、全部の行を選んで Cmd + /（Windows は Ctrl + /）を押し、行頭の # を外して実行する
+# fig, ax = plt.subplots(1, ___, figsize=(9, 3), sharey=True)
+# ax[0].plot(tau, np.sin(O1 * tau), lw=0.6)
+# ax[___].plot(tau, np.sin(O2 * tau), lw=0.6)
+# ax[0].set_title("Ω1 = 0.5"); ax[1].set_title("Ω2 = 0.8")
+# ax[1].set_xlabel(___)
+# plt.show()
+
+##MD
+<details><summary>穴埋めの答え（クリックで開く）</summary>
+
+上から `2`、`1`、`"τ"`（文字列なので `"` で囲む）です。
+</details>
+
+下のセルは答えを埋めた版です。自分で埋めた結果と同じになるか確かめてください。
+
+##CODE
+# 答え合わせ（埋めた版）
+fig, ax = plt.subplots(1, 2, figsize=(9, 3), sharey=True)
+ax[0].plot(tau, np.sin(O1 * tau), lw=0.6)
+ax[1].plot(tau, np.sin(O2 * tau), lw=0.6)
+ax[0].set_title("Ω1 = 0.5"); ax[1].set_title("Ω2 = 0.8")
+ax[1].set_xlabel("τ")
+plt.show()
+
+##MD
+## 予想してから実行
+
+**問題：** Ω₁ = 0.5、Ω₂ = 0.75 の二色の波形は、τ がいくつごとにまったく同じにくり返すでしょうか。3.3 と同じように、2つの周期 2π/Ω₁ と 2π/Ω₂ がそろう一番短い τ を考えてください。下のセルは、候補の T で「τ と τ+T で値が同じか」を調べます。
+
+**先に予想を紙かメモに書いてから**、次のセルを実行してください。
+
+##CODE
+O2b = 0.75
+t0 = np.linspace(0, 50, 500)
+for name, T_try in [("4π", 4 * np.pi), ("8π", 8 * np.pi), ("20π", 20 * np.pi)]:
+    same = np.allclose(np.sin(O1*t0) + np.sin(O2b*t0), np.sin(O1*(t0+T_try)) + np.sin(O2b*(t0+T_try)))
+    print(f"T = {name:>3s}: 同じにくり返すか → {same}")
+
+##MD
+<details><summary>解説（実行してから開く）</summary>
+
+答えは **8π** です。周期は 2π/0.5 = 4π と 2π/0.75 = 8π/3 で、4π × 2 = (8π/3) × 3 = 8π でそろいます。0.5 : 0.75 = 2 : 3 という簡単な比なので、5 : 8 のとき（20π）より早くそろいます。4π では Ω₂ の側がそろわないので `False`、20π は 8π の整数倍ではないので `False` になります。
+</details>
+
+##MD
 ## 練習問題
 
 1. 3.3 の図を Ω₂ = 0.81 で描き、共通周期 200π ごとに縦線を引いてください（τ は 0〜3×200π）。

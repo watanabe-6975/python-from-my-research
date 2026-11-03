@@ -209,6 +209,74 @@ print(res.stdout)
 4. 式は `lab/式と前提.md` にまとまっている。コードと式を並べて読む。
 5. 元のデータ（`data/`）と MATLAB（`matlab/`）は**読むだけ**。直したいときは自分のフォルダにコピーする（研究リポジトリの `CLAUDE.md`）。
 
+##MD
+## 第10章の MATLAB ↔ Python 対応
+
+| やりたいこと | MATLAB | Python |
+|---|---|---|
+| パスをつなぐ | `fullfile(root, 'data', 'a.mat')` | `root / "data" / "a.mat"`（pathlib） |
+| このファイルの場所 | `mfilename('fullpath')` | `Path(__file__).resolve()` |
+| ファイルがあるか | `isfile(f)` | `f.exists()` |
+| フォルダを作る | `mkdir(d)` | `d.mkdir(exist_ok=True)` |
+| 変数を保存 | `save('a.mat', 'A', 'sw')` | `np.savez("a.npz", A=A, sw=sw)` |
+| 読み込む | `S = load('a.mat'); S.A` | `f = np.load("a.npz"); f["A"]` |
+| v7 の .mat を読む | `load` | `scipy.io.loadmat`（1次元も (1, N) になる） |
+| v7.3 の .mat を読む | `load`（MATLAB では区別しない） | `h5py.File(..., "r")`（転置と cell の参照に注意） |
+| 関数を別ファイルに | 関数ごとに .m ファイル、`addpath` | 1つの .py に何個でも書き、`import` |
+| 直接実行したときだけ | スクリプトとして実行 | `if __name__ == "__main__":` |
+
+全章の分をまとめたものは [`対応表.md`](../対応表.md) にあります。
+
+##MD
+## 穴埋め練習
+
+10.2 で保存した `fit.npz` を、パスを組み立てて読み直します。
+
+##CODE
+# 穴埋め：___ を埋めてから、全部の行を選んで Cmd + /（Windows は Ctrl + /）を押し、行頭の # を外して実行する
+# p = ROOT / ___ / "fit.npz"
+# f = np.load(___)
+# print(f.files, f[___])
+
+##MD
+<details><summary>穴埋めの答え（クリックで開く）</summary>
+
+上から `"scratch"`、`p`、`"beta"` です（名前は文字列なので `"` で囲みます）。`beta` には 10.0 が入っています。
+</details>
+
+下のセルは答えを埋めた版です。自分で埋めた結果と同じになるか確かめてください。
+
+##CODE
+# 答え合わせ（埋めた版）
+p = ROOT / "scratch" / "fit.npz"
+f = np.load(p)
+print(f.files, f["beta"])
+
+##MD
+## 予想してから実行
+
+**問題：** 次の3つは、それぞれ何と表示されるでしょうか。
+1. `Path("data") / "iv_beta10_O2_0.80.npz"` の `.suffix`
+2. 同じパスの `.stem`
+3. 10.3 で `savemat` に数1つ `10.0` として保存した `beta` を、`loadmat` で読んだときの形 `m["beta"].shape`
+
+**先に予想を紙かメモに書いてから**、次のセルを実行してください。
+
+##CODE
+q = Path("data") / "iv_beta10_O2_0.80.npz"
+print(q.suffix)
+print(q.stem)
+print(m["beta"].shape)
+
+##MD
+<details><summary>解説（実行してから開く）</summary>
+
+1. `.npz`。最後の `.` から後ろだけが拡張子です。
+2. `iv_beta10_O2_0.80`。ファイル名から拡張子を除いたものです。途中の `.` はそのまま残ります。
+3. `(1, 1)`。MATLAB では数1つも「1行×1列の行列」なので、`loadmat` で読むと2次元になります。数として使うときは `m["beta"].item()` や `float(m["beta"])` で取り出します。
+</details>
+
+##MD
 ## 練習問題
 
 1. 10.2 で作った `fit.npz` に、`k_star = 0.1` を足して保存し直してください（`np.savez` に同じ名前で書くと上書きされます）。
@@ -245,6 +313,6 @@ print(np.load(out / "fit.npz").files)
 - .mat は v7 なら `loadmat`、v7.3 なら `h5py`。v7.3 は転置と cell の参照に注意。
 - 何度も使う関数はモジュールに。`if __name__ == "__main__":` で「直接実行したときだけ」の部分を分ける。
 
-## 全10章を終えて
+## 次の章へ
 
-ここまでで、研究コード `shapiro-research/py/` に出てくる道具（NumPy・Matplotlib・RK4・numba・ブールマスク・SciPy・複素数・h5py・モジュール）はひととおり使いました。次は研究リポジトリの `py/coherent.py` や `py/figures.py` を、この教材と見比べながら読んでみてください。
+ここまでで、研究コード `shapiro-research/py/` に出てくる道具（NumPy・Matplotlib・RK4・numba・ブールマスク・SciPy・複素数・h5py・モジュール）はひととおり使いました。最後の第11章では、β・A・Ω₂ を自分で変えて、予想してから確かめるミニ課題に取り組みます。
