@@ -4,6 +4,63 @@
 
 **例え：** ふつうの教材は「よその家の台所で料理を習う」ものですが、この教材は**自分の家の台所（研究コード）で、いつも使う材料（RK4・ステップ幅・ベッセル関数）を使って**料理を習います。習ったことが、そのまま研究コードを読む力になります。
 
+## はじめに：動かし方（Mac）
+
+Python が初めてでも、この順にやれば第1章を開けます。
+
+### 毎回やること（3行）
+
+1. 「ターミナル」アプリを開く（Spotlight で「ターミナル」と検索）。
+2. 次の3行を、**1行ずつ**貼り付けて Enter を押す。
+
+```bash
+cd ~/Documents/GitHub/python-from-my-research
+```
+
+```bash
+source .venv/bin/activate
+```
+
+```bash
+jupyter lab
+```
+
+3. ブラウザに Jupyter の画面が出たら、左のファイル一覧で `notebooks` → `01_Pythonの基本.ipynb` をダブルクリックする。
+4. セルをクリックして **Shift + Enter** を押すと、そのセルが実行されて次のセルに進む。上から順に押していく。
+5. 終わるときは、ブラウザを閉じてから、ターミナルで **Ctrl + C** を押す。
+
+| 行 | 意味 | うまくいったときの見た目 |
+|---|---|---|
+| `cd ...` | 教材のフォルダに移動する | 何も出ない（エラーが出なければ OK） |
+| `source .venv/bin/activate` | 教材専用の Python を使う状態にする。**ターミナルを開き直したら毎回必要** | 行の頭に `(.venv)` が付く |
+| `jupyter lab` | ノートブックを開くアプリを起動する | ブラウザが開く |
+
+`notebooks/executed/` には、全部実行したあとの版（出力と図つき）があります。自分で実行する前に、答えの見本として眺めるのにも使えます。
+
+### 最初の1回だけやること（`.venv` がないとき）
+
+`source .venv/bin/activate` で `no such file or directory` と出たら、教材専用の Python 環境（`.venv`）がまだありません。そのときは、`cd` の行のあとに次の2行を1回だけ実行してから、上の手順に戻ります（数分かかります）。
+
+```bash
+python3 -m venv .venv
+```
+
+```bash
+.venv/bin/pip install -r requirements.txt
+```
+
+（作者の Mac には、もう `.venv` を作ってあります。別の計算機で始めるときや、`.venv` を消したときに使います。）
+
+| 用語 | 意味 | 例え |
+|---|---|---|
+| ターミナル | 文字で命令を打ち込んで計算機を動かすアプリ | 計算機への「文字の注文票」 |
+| 仮想環境（`.venv`） | この教材専用に、Python と部品（numpy など）を入れたフォルダ | 教材専用の道具箱。ほかの作業の道具と混ざらない |
+| `pip` | Python の部品を取ってきて入れる道具 | 道具箱に工具を補充する係 |
+| Jupyter Lab | ノートブック（説明とコードと図が並んだファイル）を開いて実行するアプリ | 書き込みながら実験できるノート |
+| セル | ノートブックの1区切り。説明のセルとコードのセルがある | ノートの1ページ |
+
+**例え：** 研究室の実験と同じです。毎回「実験室に入る（`cd`）→ 自分の道具箱を開く（`activate`）→ ノートを開く（`jupyter lab`）」の順で始めます。道具箱を最初にそろえる作業（`.venv` を作る）は、1回だけです。
+
 ## 章立て
 
 | 章 | ノートブック | Python で学ぶこと | 研究の題材 | 実行時間の目安 |
@@ -39,16 +96,18 @@
 - [用語集.md](用語集.md)：全章の用語を「用語／意味／例え」の表にまとめたもの
 - [対応表.md](対応表.md)：研究の .m を読み書きするときの MATLAB ↔ Python 対応表（各章の終わりにも、その章の分の対応表があります）
 
-## 使い方
+## 使い方（慣れた人向けのまとめ）
+
+始め方は、上の「はじめに：動かし方（Mac）」にくわしく書いています。まとめると次のとおりです（Windows では `source .venv/bin/activate` の代わりに `.venv\Scripts\activate`）。
 
 ```bash
 python3 -m venv .venv          # 教材専用の Python 環境を作る（1回だけ。.venv/ は Git に入らない）
-source .venv/bin/activate      # 使うたびに。Windows は .venv\Scripts\activate
-pip install -r requirements.txt
-jupyter lab            # notebooks/ を開いて、第1章から順に
+source .venv/bin/activate      # 使うたびに
+pip install -r requirements.txt  # 1回だけ
+jupyter lab                    # notebooks/ を開いて、第1章から順に
 ```
 
-全章をまとめて実行して確かめるとき：
+全章をまとめて実行して確かめるとき（`source .venv/bin/activate` のあとで）：
 
 ```bash
 bash tools/run_all.sh           # data/ の計算結果があれば使う
