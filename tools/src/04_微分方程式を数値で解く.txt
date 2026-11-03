@@ -1,0 +1,201 @@
+##MD
+# 第4章 微分方程式を数値で解く ―― オイラー法から RK4 へ
+
+**この章でできるようになること**
+- 2階の微分方程式を「1階の式2本」に直せる
+- オイラー法と RK4（4次のルンゲ＝クッタ法）を自分で書ける
+- 刻み dt を変えて誤差を比べ、「4次」の意味を図で確かめられる
+- SciPy の `solve_ivp` と答え合わせできる
+
+**例え：** 数値積分は「霧の中の山道を、足元だけ見て歩く」ことです。オイラー法は**今いる場所の傾きだけ見て一歩**進みます。RK4 は**一歩の途中を何か所か下見して、傾きの平均で一歩**進みます。下見する分だけ手間はかかりますが、道から外れにくくなります。
+
+| 用語 | 意味 | 例え |
+|---|---|---|
+| 常微分方程式（ODE） | 「変化の速さ」が今の状態で決まる、という式 | 「今の速さで次の場所が決まる」という歩き方のルール |
+| 数値積分 | 小さな時間 dt ずつ、近似的に答えを進めていくこと | 足元を見ながら一歩ずつ歩く |
+| 刻み（dt） | 1回に進める時間の幅 | 歩幅 |
+| オイラー法 | 今の傾きだけで1歩進める、いちばん簡単な方法 | 今の向きのまま一歩踏み出す |
+| RK4 | 1歩の間で傾きを4回調べ、重み付き平均で進める方法 | 一歩先を下見してから踏み出す |
+| 次数（4次など） | dt を半分にすると誤差が (1/2)^次数 になる、という精度の目安 | 歩幅を半分にしたとき、道からのずれが何分の1になるか |
+| 位相 γ | ジョセフソン接合の位相差。この章では振り子の角度と同じ式 | 振り子の振れの角度 |
+
+> 研究コードとのつながり：`py/rcsj.py` の `steady` は、RK4 で γ と γ′ を同時に進めています。この章はその中身を小さく作り直します。
+
+##MD
+## 4.1 振り子と接合は同じ式
+
+駆動のない接合の式 **γ″ + βγ′ + sin γ = I** は、「傾いた洗濯板の上を転がる玉」や「減衰のある振り子」と同じ形です。まずは I = 0、β = 0（減衰なし）の振り子 γ″ = −sin γ から始めます。
+
+2階の式は、**γ′ を別の名前 G で呼ぶ**と1階の式2本になります。
+
+- γ′ = G
+- G′ = −sin γ　（一般には G′ = I − βG − sin γ + 駆動）
+
+研究コードでも `g`（γ）と `G`（γ′）の2つを同時に進めています。
+
+##CODE
+import numpy as np
+import matplotlib.pyplot as plt
+
+def rhs(t, g, G, I=0.0, b=0.0):
+    """(γ′, G′) を返す。"""
+    return G, I - b * G - np.sin(g)
+
+##MD
+## 4.2 オイラー法
+
+「次 = 今 + dt × 傾き」をくり返すだけです。
+
+##CODE
+def euler(g0, G0, dt, n_steps, **kw):
+    g, G, t = g0, G0, 0.0
+    gs = [g]
+    for _ in range(n_steps):
+        dg, dG = rhs(t, g, G, **kw)
+        g, G, t = g + dt * dg, G + dt * dG, t + dt
+        gs.append(g)
+    return np.array(gs)
+
+##MD
+## 4.3 RK4
+
+1歩の間に4回傾きを調べます。研究コードの書き方（`k1`〜`k4` が G の変化、`j1`〜`j4` が γ の変化）に合わせてあります。
+
+##CODE
+def rk4(g0, G0, dt, n_steps, **kw):
+    g, G, t = g0, G0, 0.0
+    gs = [g]
+    for _ in range(n_steps):
+        j1, k1 = rhs(t,          g,           G,           **kw)
+        j2, k2 = rhs(t + dt/2,   g + dt/2*j1, G + dt/2*k1, **kw)
+        j3, k3 = rhs(t + dt/2,   g + dt/2*j2, G + dt/2*k2, **kw)
+        j4, k4 = rhs(t + dt,     g + dt*j3,   G + dt*k3,   **kw)
+        g += dt/6 * (j1 + 2*j2 + 2*j3 + j4)
+        G += dt/6 * (k1 + 2*k2 + 2*k3 + k4)
+        t += dt
+        gs.append(g)
+    return np.array(gs)
+
+##MD
+研究コードは `k1 = f(...)*dt` のように **dt を先に掛けて**から `/6` していますが、ここでは `dt/6 * (...)` とまとめて掛けています。並べ方が違うだけで、同じ計算です。
+
+## 4.4 2つを比べる
+
+振り子を γ = 1（ラジアン）から静かに放します。減衰がないので、本当はずっと同じ振れ幅でゆれ続けます。
+
+##CODE
+dt, T = 0.2, 60.0
+n = int(T / dt)
+t = np.arange(n + 1) * dt
+g_e = euler(1.0, 0.0, dt, n)
+g_r = rk4(1.0, 0.0, dt, n)
+
+fig, ax = plt.subplots(figsize=(8, 3))
+ax.plot(t, g_e, label="Euler")
+ax.plot(t, g_r, label="RK4")
+ax.set_xlabel("τ"); ax.set_ylabel("γ"); ax.legend(); ax.grid(alpha=.3)
+ax.set_title(f"Pendulum γ'' = -sin γ, dt = {dt}")
+plt.show()
+
+##MD
+オイラー法は振れ幅がだんだん大きくなり、エネルギーが勝手に増えてしまいます。RK4 は同じ dt でもほとんど崩れません。
+
+## 4.5 エネルギーで確かめる
+
+減衰がないとき、E = ½G² − cos γ は一定のはずです。どれくらい保たれるかを見ます（G も必要なので、関数を少し変えて両方返します）。
+
+##CODE
+def rk4_both(g0, G0, dt, n_steps, **kw):
+    g, G, t = g0, G0, 0.0
+    out = np.empty((n_steps + 1, 2)); out[0] = g, G
+    for s in range(n_steps):
+        j1, k1 = rhs(t, g, G, **kw)
+        j2, k2 = rhs(t + dt/2, g + dt/2*j1, G + dt/2*k1, **kw)
+        j3, k3 = rhs(t + dt/2, g + dt/2*j2, G + dt/2*k2, **kw)
+        j4, k4 = rhs(t + dt, g + dt*j3, G + dt*k3, **kw)
+        g += dt/6*(j1 + 2*j2 + 2*j3 + j4); G += dt/6*(k1 + 2*k2 + 2*k3 + k4); t += dt
+        out[s + 1] = g, G
+    return out
+
+gG = rk4_both(1.0, 0.0, 0.2, 300)
+E = 0.5 * gG[:, 1]**2 - np.cos(gG[:, 0])
+print(f"エネルギーの変化（最大−最小）: {E.max() - E.min():.2e}")
+
+##MD
+## 4.6 誤差と次数 ―― dt を半分にすると？
+
+正確な答えの代わりに、**とても小さい dt で解いた RK4** を「正解」とみなします。τ = 10 での γ の誤差を、dt をいろいろ変えて測ります。両対数のグラフで、オイラー法は傾き 1、RK4 は傾き 4 の直線になるはずです。
+
+##CODE
+T = 10.0
+ref = rk4(1.0, 0.0, 1e-3, int(T / 1e-3))[-1]
+dts = np.array([0.4, 0.2, 0.1, 0.05, 0.025])
+err_e = [abs(euler(1.0, 0.0, d, int(round(T / d)))[-1] - ref) for d in dts]
+err_r = [abs(rk4(1.0, 0.0, d, int(round(T / d)))[-1] - ref) for d in dts]
+
+fig, ax = plt.subplots(figsize=(5, 4))
+ax.loglog(dts, err_e, "o-", label="Euler")
+ax.loglog(dts, err_r, "s-", label="RK4")
+ax.loglog(dts, 0.5 * dts, "k:", label="slope 1")
+ax.loglog(dts, 0.02 * dts**4, "k--", label="slope 4")
+ax.set_xlabel("dt"); ax.set_ylabel("|error| at τ=10"); ax.legend(); ax.grid(alpha=.3, which="both")
+plt.show()
+
+slope_e = np.polyfit(np.log(dts), np.log(err_e), 1)[0]
+slope_r = np.polyfit(np.log(dts), np.log(err_r), 1)[0]
+print(f"傾き  Euler: {slope_e:.2f}   RK4: {slope_r:.2f}")
+
+##MD
+傾きがおよそ 1 と 4 になりました。**RK4 は dt を半分にすると誤差がおよそ 1/16** になります。研究コードの dt = 1/32 は、駆動の周期（Ω₂ = 0.8 なら 2π/0.8 ≈ 7.9）よりずっと小さい刻みです。
+
+## 4.7 SciPy の solve_ivp と答え合わせ
+
+SciPy には、刻みを自動で調整してくれる `solve_ivp` があります。自分の RK4 と比べます。`solve_ivp` には「状態をまとめた配列 y = [γ, G]」を受け取る関数を渡します。
+
+##CODE
+from scipy.integrate import solve_ivp
+
+def f_ivp(t, y):
+    g, G = y
+    return [G, -np.sin(g)]
+
+sol = solve_ivp(f_ivp, (0, 10), [1.0, 0.0], rtol=1e-10, atol=1e-12)
+print("solve_ivp の γ(10):", sol.y[0, -1])
+print("自作 RK4 (dt=0.01):", rk4(1.0, 0.0, 0.01, 1000)[-1])
+
+##MD
+ほぼ同じ値になりました。では研究ではなぜ `solve_ivp` ではなく固定刻みの RK4 を使うのでしょうか。理由の一つは、**MATLAB の元のコード（rk4_steady）と同じ手順にして、結果を照らし合わせるため**です（`lab/式と前提.md` 2章）。刻みが固定なら、平均をとる区間も「何ステップ分」とはっきり決められます。
+
+## 4.8 減衰と直流電流を入れる
+
+β > 0、I > 0 にすると、I < 1 では玉は洗濯板のくぼみで止まり（γ′ → 0）、I > 1 では転がり続けます（γ′ の平均 > 0、つまり電圧が出る）。
+
+##CODE
+fig, ax = plt.subplots(figsize=(8, 3))
+dt, n = 0.05, 1200
+t = np.arange(n + 1) * dt
+for I in [0.5, 0.9, 1.1, 1.5]:
+    ax.plot(t, rk4(0.0, 0.0, dt, n, I=I, b=1.0), label=f"I = {I}")
+ax.set_xlabel("τ"); ax.set_ylabel("γ"); ax.legend(); ax.grid(alpha=.3)
+ax.set_title("β = 1: below I=1 the phase stops, above I=1 it keeps running")
+plt.show()
+
+##MD
+γ が増え続ける＝**電圧が出ている**状態です（ジョセフソンの関係で、電圧は γ′ に比例します）。次の章ではこれを使って、電圧 V = ⟨γ′⟩ を求めます。
+
+## 練習問題
+
+1. 4.6 で、オイラー法の dt を 0.0125 まで足すと、誤差はいくつになりますか。RK4 で同じ誤差になるのは、だいたいどの dt ですか。
+2. 4.8 の図で I = 1.0 ちょうどにすると、どうなりますか。τ を長くして確かめてください。
+
+<details><summary>答え</summary>
+
+1. オイラー法の誤差は dt にほぼ比例するので、0.025 のときのおよそ半分（約 0.06）になります。RK4 は dt = 0.4 でも誤差が約 0.0006 で、それより小さくなります。歩幅が 30 倍以上大きくても RK4 のほうが正確です。
+2. I = 1 はちょうど境目です。γ は π/2 ≈ 1.571 にだんだんゆっくり近づき、転がり出しません（τ = 1000 でも γ ≈ 1.569）。洗濯板のくぼみがちょうど平らになって消えかけている場所で、玉が止まりかけている状態です。
+</details>
+
+##MD
+## まとめ
+- 2階の式は、γ′ = G と置いて1階の式2本にする。
+- RK4 は1歩に傾きを4回調べる。dt を半分にすると誤差はおよそ 1/16（4次）。
+- 研究では、MATLAB と同じ手順で照らし合わせるために、固定刻み dt = 1/32 の RK4 を使っている。

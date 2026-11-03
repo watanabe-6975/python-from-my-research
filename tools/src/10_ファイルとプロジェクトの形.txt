@@ -1,0 +1,250 @@
+##MD
+# 第10章 ファイルとプロジェクトの形 ―― 研究コードを読める・書ける形にする
+
+**この章でできるようになること**
+- `pathlib` で「どこから実行しても同じ場所」を指せる（研究の `py/paths.py` の考え方）
+- `np.save`・`np.savez`・`np.load` で計算結果を保存・読み込みできる
+- MATLAB の .mat を読める（v7 までは `scipy.io.loadmat`、v7.3 は `h5py`）
+- 関数をモジュール（.py ファイル）に分けて `import` し、`if __name__ == "__main__":` の意味がわかる
+
+**例え：** プロジェクトの形は「**台所の収納**」です。材料（元のデータ）は冷蔵庫、作った料理（計算結果）は保存容器、レシピ（コード）は棚、と置き場所を決めておけば、だれが料理しても迷いません。`paths.py` は、台所の入り口に貼った**収納の地図**です。
+
+| 用語 | 意味 | 例え |
+|---|---|---|
+| パス（path） | ファイルの場所を表す文字列 | 住所 |
+| 絶対パス / 相対パス | 根元からの住所 / 今いる場所からの道順 | 「愛知県豊田市…」/「2つ先の角を右」 |
+| pathlib | パスを部品として扱う Python 標準の道具。`/` でつなげる | 住所を「県・市・町」の部品で組み立てる |
+| `__file__` | 今のファイル自身の場所 | 「この地図が貼ってある場所」 |
+| .npy / .npz | NumPy の配列を保存するファイル（.npz は複数をまとめたもの） | 料理1品の保存容器 / お弁当箱 |
+| .mat（v7 / v7.3） | MATLAB のデータファイル。v7.3 の中身は HDF5 | MATLAB 専用の保存容器 |
+| HDF5 | 大きなデータを、フォルダのような階層で保存する形式 | 引き出しの中に引き出しがあるタンス |
+| 参照（reference） | 「データはあちらの引き出しにある」という印。MATLAB の cell は v7.3 でこれになる | 「中身は2段目」と書いた付箋 |
+| 列優先 / 行優先 | 2次元の表をメモリに並べる順（MATLAB は列優先、NumPy はふつう行優先） | 表を縦に読むか横に読むか |
+| モジュール | 関数などをまとめた .py ファイル。`import` で使う | レシピ集の1冊 |
+| `if __name__ == "__main__":` | 「直接実行されたときだけ」動かす部分 | 本番の調理。レシピ集を参照するだけのときはやらない |
+
+> 研究コードとのつながり：`py/paths.py`（場所の決め方）、`py/load.py`（v7.3 の .mat を `h5py` で読む）、`py/coherent.py` の `if __name__=='__main__':`。研究リポジトリの `CLAUDE.md` にも「絶対パスや `../out` のような、実行場所に頼る書き方はしない」とあります。
+
+##MD
+## 10.1 pathlib で場所を組み立てる
+
+##CODE
+from pathlib import Path
+import numpy as np
+
+here = Path.cwd()                  # 今いるフォルダ（実行する場所で変わる）
+print("今いる場所の名前:", here.name)
+
+from kyozai.paths import ROOT, DATA   # 教材リポジトリの直下と data/
+print("ROOT の名前:", ROOT.name)
+print("DATA は ROOT の中の:", DATA.relative_to(ROOT))
+p = DATA / "iv_beta10_O2_0.80.npz"    # `/` でつなげる
+print(p.name, p.suffix, p.stem, "あるか:", p.exists())
+
+##MD
+`kyozai/paths.py` の中身は次のとおりです（研究の `py/paths.py` と同じ考え方）。
+
+```python
+ROOT = Path(__file__).resolve().parent.parent   # このファイルの1つ上のフォルダ
+DATA = ROOT / "data"
+```
+
+`__file__` は「このファイル自身の場所」なので、**どこから実行しても**同じ場所を指します。`Path.cwd()`（今いる場所）を基準にすると、ノートブックを別のフォルダに置いただけで動かなくなります。
+
+## 10.2 NumPy の保存と読み込み
+
+練習用のフォルダ `scratch/` に書きます（`.gitignore` で Git に入らないようにしてある）。
+
+##CODE
+out = ROOT / "scratch"
+out.mkdir(exist_ok=True)
+
+A = np.linspace(0, 64, 33)
+sw = np.sin(A / 10) ** 2               # 仮のデータ
+np.save(out / "sw.npy", sw)            # 配列1つ
+np.savez(out / "fit.npz", A=A, sw=sw, beta=10.0)   # 名前を付けて複数
+
+sw2 = np.load(out / "sw.npy")
+f = np.load(out / "fit.npz")
+print(f.files, f["beta"], np.array_equal(f["sw"], sw2))
+
+##MD
+`kyozai/data.py` の `iv_beta10` は、この `np.savez` / `np.load` で「1回目は計算して保存、2回目からは読む」をしています。研究の `py/` も、重い計算の結果を `out/*.npy` に保存して、図を描くスクリプトはそれを読むだけにしています（研究リポジトリの README の「重さ」の列）。
+
+## 10.3 MATLAB の .mat を読む（v7 まで）
+
+`scipy.io.savemat` / `loadmat` で、v7 までの .mat を読み書きできます。MATLAB で `save('a.mat','x')` としたファイルはふつう v7 です。
+
+##CODE
+from scipy.io import savemat, loadmat
+savemat(out / "demo_v7.mat", {"A_list": A, "beta": 10.0, "IV": np.random.default_rng(0).random((5, 3))})
+m = loadmat(out / "demo_v7.mat")
+print([k for k in m if not k.startswith("__")])
+print("A_list の形:", m["A_list"].shape)     # (1, 33)：MATLAB の行ベクトルのまま
+print("ravel すると:", m["A_list"].ravel().shape)
+
+##MD
+MATLAB では1次元の配列も「1行×33列」の2次元なので、`loadmat` で読むと形が `(1, 33)` になります。`.ravel()` で1次元に直します。研究の `py/load.py` でも `.ravel()` を何度も使っています。
+
+## 10.4 v7.3 の .mat を h5py で読む
+
+MATLAB で `save(..., '-v7.3')` としたファイル（大きいデータはこちらになる）は、中身が HDF5 です。`loadmat` では読めないので `h5py` を使います。研究の `twotone_fullscan_final_results.mat` もこの形式です。
+
+v7.3 には、慣れないと戸惑う点が2つあります。
+1. **縦と横が入れかわる**：MATLAB は列優先で保存するので、h5py で読むと形が転置されます。`.T` で戻します。
+2. **cell 配列は「参照」になる**：cell の各要素は別の場所に置かれ、本体には「あちらにある」という参照だけが入ります。
+
+研究の本物のファイルはこの教材に入れていないので、**同じ形の小さなファイルを自分で作って**読んでみます。
+
+##CODE
+import h5py
+
+# MATLAB の v7.3 と同じ形の小さな HDF5 を作る（β ごとに長さの違う IV を cell に入れた形）
+betas = [3.0, 10.0]
+with h5py.File(out / "demo_v73.mat", "w") as h:
+    h["beta_list"] = np.array(betas)[None, :]             # MATLAB の 1×2
+    refs = h.create_dataset("IV_A_all", (1, 2), dtype=h5py.ref_dtype)
+    grp = h.create_group("#refs#")                         # MATLAB も cell の中身をここに置く
+    for j, (b, M) in enumerate(zip(betas, [4, 6])):
+        iv = np.arange(M * 3, dtype=float).reshape(M, 3)   # Python で (電流 M, 振幅 3)
+        ds = grp.create_dataset(f"iv{j}", data=iv.T)       # MATLAB 流に転置して保存
+        refs[0, j] = ds.ref
+print("作った:", (out / "demo_v73.mat").name)
+
+##MD
+研究の `py/load.py` と同じ読み方で読みます。
+
+```python
+def cell(name):
+    return [np.array(f[r]) for r in np.array(f[name]).ravel()]
+IV = [a.T for a in cell('IV_A_all')]   # (M, nA)
+```
+
+`f[r]` は「参照 r の先にあるデータ」を取り出す書き方です。
+
+##CODE
+with h5py.File(out / "demo_v73.mat", "r") as f:
+    print("中にある名前:", list(f.keys()))
+    beta = np.array(f["beta_list"]).ravel()
+    def cell(name):
+        return [np.array(f[r]) for r in np.array(f[name]).ravel()]
+    IV = [a.T for a in cell("IV_A_all")]
+print("beta:", beta)
+for b, iv in zip(beta, IV):
+    print(f"β = {b}: IV の形 {iv.shape}  (電流の数, 振幅の数)")
+
+##MD
+`with ... as f:` の形で開くと、ブロックを出たときに自動でファイルが閉じられます（閉じ忘れを防げます）。
+
+**研究リポジトリがある人へ：** `shapiro-research` を手元に置いていれば、研究リポジトリの直下で次を実行すると、本物の保存データを読めます（この教材のテストでは実行していません）。
+
+```python
+import sys; sys.path.insert(0, "py")
+from load import load
+d = load()
+print(d["beta"], d["IV"][11].shape)
+```
+
+## 10.5 モジュールに分ける
+
+ノートブックの中で書いた関数は、そのノートブックでしか使えません。何度も使う関数は .py ファイル（モジュール）に書いて `import` します。この教材の `kyozai/` がその例です。
+
+```
+python-from-my-research/
+├── kyozai/            ← モジュールの置き場（パッケージ）
+│   ├── __init__.py    ← 「このフォルダはパッケージ」という印
+│   ├── paths.py       ← 場所の決め方
+│   ├── rcsj_mini.py   ← RK4（numba）
+│   ├── step.py        ← ステップ幅の取り出し
+│   ├── theory.py      ← 単項・コヒーレント和・フィット
+│   └── data.py        ← IV マップを作るか読むか
+├── data/              ← 計算結果（.npz）
+├── notebooks/         ← 各章
+└── scratch/           ← 練習用（Git に入れない）
+```
+
+小さなモジュールを書いて、動きを確かめてみます。`%%writefile` は「このセルの中身をファイルに書く」Jupyter の機能です。
+
+##CODE
+%%writefile {out}/mystep.py
+"""練習用のモジュール。"""
+O1, O2 = 0.5, 0.8
+
+def step_voltage(n, m):
+    return n * O1 + m * O2
+
+print("mystep.py が読み込まれた。__name__ =", __name__)
+
+if __name__ == "__main__":
+    # 直接 `python mystep.py` と実行したときだけ動く
+    for nm in [(0, 1), (1, 0), (-1, 1)]:
+        print(nm, step_voltage(*nm))
+
+##MD
+`{out}` のように書くと、Python の変数 `out`（10.2 で作った `scratch/` の場所）がパスに入ります。上で書いたファイルを、`import` した場合と直接実行した場合で比べます。
+
+##CODE
+import sys, subprocess
+sys.path.insert(0, str(out))
+import mystep                                   # import したとき：__name__ は "mystep"
+print(mystep.step_voltage(-1, 1))
+
+res = subprocess.run([sys.executable, str(out / "mystep.py")], capture_output=True, text=True)
+print("--- 直接実行したとき ---")
+print(res.stdout)
+
+##MD
+- `import` したとき：`__name__` は `"mystep"` なので、`if __name__ == "__main__":` の中は**動かない**。
+- 直接実行したとき：`__name__` は `"__main__"` なので、中が**動く**。
+
+研究の `py/coherent.py` は、この仕組みで「`import` すれば関数だけ使える／直接実行すればフィットの表を出す」の両方をこなしています。`py/figures.py` が `from coherent import single,coherent,fit` としても、表の計算は走りません。
+
+## 10.6 研究コードを読むときのコツ
+
+研究リポジトリ `shapiro-research` を読むときに役立つ順番です。
+
+1. `README.md` の表で、どのスクリプトが何をして、どれくらい重いかを見る。
+2. `py/paths.py` で、ファイルの置き場所を確かめる。
+3. 重いスクリプト（`sim_beta.py` など、4コアで約12分）は、まず軽いもの（`figures_kj_all.py` など）から動かす。
+4. 式は `lab/式と前提.md` にまとまっている。コードと式を並べて読む。
+5. 元のデータ（`data/`）と MATLAB（`matlab/`）は**読むだけ**。直したいときは自分のフォルダにコピーする（研究リポジトリの `CLAUDE.md`）。
+
+## 練習問題
+
+1. 10.2 で作った `fit.npz` に、`k_star = 0.1` を足して保存し直してください（`np.savez` に同じ名前で書くと上書きされます）。
+2. `mystep.py` に「(n, m) のリストを受け取って、V の配列を返す関数」を足し、`importlib.reload(mystep)` で読み込み直して使ってください。
+
+<details><summary>答え</summary>
+
+```python
+# 1.
+f = dict(np.load(out / "fit.npz"))
+f["k_star"] = 0.1
+np.savez(out / "fit.npz", **f)
+print(np.load(out / "fit.npz").files)
+# 2.（mystep.py に足す）
+# import numpy as np
+# def voltages(pairs):
+#     return np.array([step_voltage(n, m) for n, m in pairs])
+import importlib
+importlib.reload(mystep)
+```
+`import` は1回目しかファイルを読まないので、書き換えたあとは `importlib.reload` が必要です。
+</details>
+
+##CODE
+f = dict(np.load(out / "fit.npz"))
+f["k_star"] = 0.1
+np.savez(out / "fit.npz", **f)
+print(np.load(out / "fit.npz").files)
+
+##MD
+## まとめ
+- 場所は `Path(__file__)` を基準に決める。どこから実行しても同じ場所を指す。
+- 重い計算は `np.savez` で保存し、図を描くときは読むだけにする。
+- .mat は v7 なら `loadmat`、v7.3 なら `h5py`。v7.3 は転置と cell の参照に注意。
+- 何度も使う関数はモジュールに。`if __name__ == "__main__":` で「直接実行したときだけ」の部分を分ける。
+
+## 全10章を終えて
+
+ここまでで、研究コード `shapiro-research/py/` に出てくる道具（NumPy・Matplotlib・RK4・numba・ブールマスク・SciPy・複素数・h5py・モジュール）はひととおり使いました。次は研究リポジトリの `py/coherent.py` や `py/figures.py` を、この教材と見比べながら読んでみてください。

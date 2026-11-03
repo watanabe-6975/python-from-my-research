@@ -1,0 +1,104 @@
+# MATLAB ↔ Python 対応表
+
+研究の元のコード（`shapiro-research/matlab/*.m`）を Python で読み書きするときの対応表です。Python 側は `import numpy as np`、`import matplotlib.pyplot as plt` を前提にしています。
+
+**例え：** これは「方言の対応表」です。言いたいこと（計算の中身）は同じでも、言い回し（書き方）が違います。特に**数え始め（1 か 0 か）**と**範囲の終わりを含むか**は、聞き間違えやすい方言です。
+
+## 1. いちばん間違えやすい違い
+
+| 項目 | MATLAB | Python（NumPy） | 注意 |
+|---|---|---|---|
+| 番号の始まり | `x(1)` が最初 | `x[0]` が最初 | 1 ずれる |
+| 最後の要素 | `x(end)` | `x[-1]` | |
+| 範囲 | `x(2:4)` は 2,3,4 番目 | `x[1:4]` は 1,2,3 番目（4 は含まない） | 始まりも終わりも違う |
+| かっこ | 番号も関数も `()` | 番号は `[]`、関数は `()` | |
+| 要素ごとの積 | `a .* b` | `a * b` | Python の `*` は要素ごと |
+| 行列の積 | `a * b` | `a @ b` | |
+| べき乗（要素ごと） | `a .^ 2` | `a ** 2` | |
+| 代入 | `b = a` はコピー | `b = a` は**同じもの**を指す | コピーは `b = a.copy()` |
+| スライス | コピー | ビュー（元と共有） | 第2章 2.3 |
+| ブロックの終わり | `end` | 字下げ（インデント） | |
+| コメント | `%` | `#` | |
+| 文の終わりの `;` | 表示を止める | いらない（表示は `print`） | |
+| 1次元の配列 | 1×N か N×1 の2次元 | 本当に1次元 `(N,)` | `.mat` を読むと `(1, N)` になるので `.ravel()` |
+| 表の並び順 | 列優先 | 行優先（既定） | v7.3 の .mat を h5py で読むと転置される → `.T` |
+
+## 2. 配列を作る
+
+| すること | MATLAB | Python |
+|---|---|---|
+| 等間隔（点の数） | `linspace(0, 64, 33)` | `np.linspace(0, 64, 33)` |
+| 等間隔（刻み） | `0:0.1:1`（1 を含む） | `np.arange(0, 1.0001, 0.1)`（終わりを含まないので少し足す）か `np.linspace` |
+| 0 の配列 | `zeros(M, N)` | `np.zeros((M, N))`（形はタプル） |
+| 1 の配列 | `ones(n, 1)` | `np.ones(n)` |
+| 同じ値 | `initial*ones(n,1)` | `np.full(n, initial)` |
+| 格子 | `[X, Y] = meshgrid(x, y)` | `X, Y = np.meshgrid(x, y)` |
+| 対数で等間隔 | `logspace(-3, 0, 50)` | `np.logspace(-3, 0, 50)` |
+| 大きさ | `size(x)`, `numel(x)`, `length(x)` | `x.shape`, `x.size`, `len(x)` |
+| 列ベクトルにする | `I = Ivec(:);` | `I = np.ravel(Ivec)`（1次元にする） |
+| 形を戻す | `reshape(V, size(Ivec))` | `V.reshape(Ivec.shape)` |
+
+## 3. 計算
+
+| すること | MATLAB | Python |
+|---|---|---|
+| 差分 | `diff(x)` | `np.diff(x)` |
+| 和・平均 | `sum(x)`, `mean(x)` | `x.sum()`, `x.mean()`（軸は `axis=0` など） |
+| 最大とその位置 | `[m, i] = max(x)` | `m = x.max(); i = x.argmax()` |
+| nan を無視して最大の位置 | — | `np.nanargmax(x)` |
+| 条件に合う番号 | `find(x > 0)` | `np.where(x > 0)[0]` |
+| 論理積・論理和・否定 | `&`, `\|`, `~` | `&`, `\|`, `~`（比較はかっこで囲む：`(a > 0) & (b < 1)`） |
+| どれか / 全部 | `any(x)`, `all(x)` | `x.any()`, `x.all()` |
+| 負なら 0 | `max(V, 0)` | `np.maximum(V, 0)`（`np.max` ではない） |
+| 絶対値・ベッセル | `abs(x)`, `besselj(n, x)` | `np.abs(x)`, `scipy.special.jv(n, x)` |
+| 相関係数 | `corrcoef(a, b)` | `np.corrcoef(a, b)[0, 1]` |
+| 虚数単位 | `1i` | `1j` |
+| 有限か | `isfinite(x)` | `np.isfinite(x)` |
+
+## 4. 制御・関数
+
+| すること | MATLAB | Python |
+|---|---|---|
+| くり返し | `for k = 1:N ... end` | `for k in range(N):`（k は 0〜N−1） |
+| 条件 | `if ... elseif ... else ... end` | `if ...: elif ...: else:` |
+| 関数 | `function V = f(I, b) ... end` | `def f(I, b): ... return V` |
+| 既定の引数 | `if nargin < 10, initial = 1; end` | `def f(..., initial=1.0):` |
+| 複数の戻り値 | `[w, edges] = f(...)` | `w, edges = f(...)`（タプルで返す） |
+| 中の関数 | 入れ子の `function` | 中で `def` するか `lambda` |
+| 時間を測る | `tic; ...; toc` | `t0 = time.time(); ...; time.time() - t0`、Jupyter なら `%timeit` |
+| 並列 | `parfor` | numba の `prange`（第6章） |
+
+## 5. 図
+
+| すること | MATLAB | Python（Matplotlib） |
+|---|---|---|
+| 新しい図 | `figure` | `fig, ax = plt.subplots()` |
+| 並べる | `subplot(1, 2, 1)` | `fig, ax = plt.subplots(1, 2)` → `ax[0]` |
+| 線 | `plot(x, y, 'k--')` | `ax.plot(x, y, 'k--')` |
+| 重ねる | `hold on` | いらない（同じ `ax` に描けば重なる） |
+| 軸ラベル・題 | `xlabel`, `ylabel`, `title` | `ax.set_xlabel`, `ax.set_ylabel`, `ax.set_title` |
+| 凡例 | `legend(...)` | `label=` を付けて `ax.legend()` |
+| 格子 | `grid on` | `ax.grid()` |
+| 対数軸 | `set(gca, 'XScale', 'log')` | `ax.set_xscale('log')` |
+| 2次元の色 | `pcolor`, `imagesc` | `ax.pcolormesh(x, y, Z)`（Z の形は (y の数, x の数)） |
+| 保存 | `saveas(gcf, 'a.png')`, `exportgraphics` | `fig.savefig('a.png', dpi=150)` |
+
+## 6. ファイル
+
+| すること | MATLAB | Python |
+|---|---|---|
+| .mat を読む（v7 まで） | `load('a.mat')` | `scipy.io.loadmat('a.mat')` |
+| .mat を読む（v7.3） | `load('a.mat')` | `h5py.File('a.mat', 'r')`（転置と cell の参照に注意。第10章） |
+| .mat に書く | `save('a.mat', 'x')` | `scipy.io.savemat('a.mat', {'x': x})` |
+| Python どうしで保存 | — | `np.save` / `np.savez` / `np.load` |
+| パスをつなぐ | `fullfile(a, 'b.mat')` | `Path(a) / 'b.mat'` |
+| このファイルの場所 | `mfilename('fullpath')` | `Path(__file__).resolve()` |
+
+## 7. 研究コードでの実例
+
+| 中身 | MATLAB | Python |
+|---|---|---|
+| RK4 で IV（電流をベクトル化） | `matlab/60_発表/R8_oubutsu/pf_rk4_iv.m` | 教材 `kyozai/rcsj_mini.py` の `iv_numpy`（第5章） |
+| RK4 で IV（1点ずつ・並列） | `matlab/40_kstarスケール/two_toen_k_scale/two_tone_shapiro_step_fullscan_0806.m` の中の関数 `rk4_steady` | 研究 `py/rcsj.py`、教材 `kyozai/rcsj_mini.py` の `iv_map`（第6章） |
+| ステップ幅（傾き＋窓） | 同じファイルの中の関数 `extract_step_width` | 研究 `py/load.py` の `extract`、教材 `kyozai/step.py`（第7章） |
+| ステップ幅（窓＋線形補間） | `matlab/60_発表/R8_oubutsu/oubutu_sub_0906/step_width_from_iv.m` | この教材では移植していない |

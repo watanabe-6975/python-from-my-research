@@ -1,0 +1,197 @@
+##MD
+# 第9章 複素数とコヒーレント和 ―― 報告書の計算をたどる
+
+**この章でできるようになること**
+- Python の複素数（`1j`）と `np.abs` を使える
+- 「同じ電圧に届く (n, m) を位相つきで足す」コヒーレント和を関数にできる
+- 単項とコヒーレント和のフィットを比べられる
+- 反実験（Ω₂ = 0.81）を自分で計算して確かめられる
+
+**この章の立場：** この章は、研究報告書 `報告_(-1,1)第3ローブの原因_20261102.md` の計算を、**教材の小さい計算（電流の範囲を狭め、A を 33 点にしたもの）でたどり直す**ものです。新しい結論を出すものではありません。報告書の数値と、この教材で出た数値は分けて書きます。
+
+**例え：** 二つの太鼓（Ω₁ = 0.5 と Ω₂ = 0.8）のリズムが 5:8 でそろうので、「0.3 のリズム」は (−1, 1) の叩き方だけでなく (7, −4) の叩き方でも鳴ります。単項の理論は一人の太鼓の音だけを数えていました。コヒーレント和は、**同じ高さで鳴る音を、タイミング（位相）も込みで全部足す**理論です（報告書の例えより）。
+
+| 用語 | 意味 | 例え |
+|---|---|---|
+| 複素数 | a + bi の形の数。Python では `1j` が虚数単位 i | 平面の上の矢印 |
+| 位相（複素数の） | 複素数の矢印の向き。(−i)ⁿ は n が1増えるごとに −90° 回る | 時計の針の向き |
+| 通約 | 2つの周波数の比が、簡単な整数の比になること（0.5:0.8 = 5:8） | 5拍子と8拍子の頭がそろう |
+| コヒーレント和 | 同じ電圧に届く項を、位相の向きも含めて足すこと | 音の波を、山と谷のタイミング込みで重ねる |
+| ゼロ点を埋める | 単項が 0 になる A でも、ほかの項が残るので合計が 0 にならないこと | 一人が休んでも、もう一人が叩いている |
+| 反実験 | 「原因がこれなら、これを外せば現象は消えるはず」と確かめる実験 | 犯人と思う人をその場から外して、事件が起きないか見る |
+
+> 研究コードとのつながり：`py/coherent.py` の `coherent`、`py/detune.py`・`py/detune_fit.py`（反実験）。教材の `kyozai/theory.py` の `coherent` は同じ式です。
+
+##MD
+## 9.1 Python の複素数
+
+虚数単位 i は `1j` と書きます。`abs()`（配列なら `np.abs`）で大きさ（矢印の長さ）になります。
+
+##CODE
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.special import jv
+
+z = 3 + 4j
+print(z, z.real, z.imag, abs(z))
+for n in range(5):
+    print(n, (-1j) ** n)
+
+##MD
+(−i)ⁿ は n が1増えるごとに 1 → −i → −1 → i → 1 と、矢印が −90° ずつ回ります。
+
+**大事な点：** 矢印は、向きがそろっていれば長くなり、反対向きなら打ち消し合い、**直角なら打ち消し合わずに長さが √(a² + b²) になる**、という足し方をします。
+
+##CODE
+a, b = 1.0, 0.5
+print("同じ向き :", abs(a + b))
+print("反対向き :", abs(a - b))
+print("直角     :", abs(a + 1j * b), "= √(a²+b²) =", np.hypot(a, b))
+print("a が 0 でも:", abs(0 + 1j * b))      # 片方が 0 でも、もう片方が残る
+
+##MD
+## 9.2 同じ電圧に届く項
+
+第1章の練習で、V = 0.3 に届く (n, m) は (−1, 1) から n を 8、m を −5 ずつ動かした (7, −4)、(−9, 6)、… でした。一般に (n + 8j, m − 5j) です（j は整数）。
+
+報告書の式（`lab/式と前提.md` 5.3）：
+
+$$\Delta I_{n,m} \propto \Big|\sum_{j=-4}^{4} (-i)^{\,(n+8j)+(m-5j)}\,J_{n+8j}(x_1)\,J_{m-5j}(x_2)\Big|$$
+
+j = 0 の項が単項 Jₙ Jₘ です。(−i) の指数は (n+8j)+(m−5j) = n+m+3j なので、j = ±1 の項は単項から 3 × (−90°) = −270°（= +90°）回った向き、つまり**直角**になります。9.1 で見たとおり、直角の項は打ち消し合わずに残るので、単項のゼロ点を埋め、山を持ち上げます。
+
+##CODE
+O1, O2 = 0.5, 0.8
+
+def coherent(n, m, A, k, J=4):
+    S = np.zeros_like(A, dtype=complex)
+    for j in range(-J, J + 1):
+        nn, mm = n + 8 * j, m - 5 * j
+        S += (-1j) ** (nn + mm) * jv(nn, k * A / O1) * jv(mm, k * A / O2)
+    return np.abs(S)
+
+def single(n, m, A, k):
+    return np.abs(jv(n, k * A / O1) * jv(m, k * A / O2))
+
+Af = np.linspace(0, 64, 600)
+k = 0.1
+fig, ax = plt.subplots(figsize=(8, 4))
+ax.plot(Af, single(-1, 1, Af, k), "k--", label="single (-1,1)")
+ax.plot(Af, np.abs(jv(7, k*Af/O1) * jv(-4, k*Af/O2)), ":", c="gray", label="(7,-4) term alone")
+ax.plot(Af, coherent(-1, 1, Af, k), c="#0072d9", label="coherent sum")
+ax.set_xlabel("A"); ax.legend(); ax.grid(alpha=.3); ax.set_title("k = 0.1")
+plt.show()
+
+##MD
+A が小さいところでは (7, −4) の項はほぼ 0 で、コヒーレント和は単項と重なります。A ≈ 40 を超えると (7, −4) の項が大きくなり、コヒーレント和が単項より高くなります。
+
+`np.zeros_like(A, dtype=complex)` は「A と同じ形で、複素数の 0 が入った配列」を作ります。
+
+## 9.3 フィットして比べる
+
+第8章と同じデータを、2つの理論でフィットします。
+
+##CODE
+from kyozai.data import iv_beta10
+from kyozai.step import extract
+from kyozai.theory import fit, single as single_k, coherent as coherent_k
+
+d = iv_beta10(O2=0.8)
+I, A, V = d["I"], d["A"], d["V"]
+sw = np.array([extract(I, V[:, j], 0.3, 0.02, 0.04) for j in range(A.size)])
+
+r1, k1, s1 = fit(sw, A, single_k, -1, 1)
+r2, k2, s2 = fit(sw, A, coherent_k, -1, 1)
+print("この教材の計算（β=10, (-1,1), Ω2=0.80）")
+print(f"  単項         : r = {r1:.3f}, k* = {k1:.4f}, k*β = {k1*10:.3f}")
+print(f"  コヒーレント和: r = {r2:.3f}, k* = {k2:.4f}, k*β = {k2*10:.3f}")
+
+##MD
+報告書の表1（研究の保存データ `twotone_fullscan_final_results.mat` から）は、単項 r = 0.801、コヒーレント和 r = 0.992、どちらも k*β = 1.005 です。上のこの教材の数値と見比べてください。
+
+##CODE
+fig, ax = plt.subplots(figsize=(8, 4.5))
+ax.plot(A, sw, "o", c="#cc0000", ms=5, label="numerical ΔI (this notebook)")
+ax.plot(Af, s1 * single_k(-1, 1, Af, k1), "k--", label=f"single |J-1 J1|  r = {r1:.3f}")
+ax.plot(Af, s2 * coherent_k(-1, 1, Af, k2), "-", c="#0072d9", label=f"coherent sum  r = {r2:.3f}")
+ax.plot(Af, s2 * np.abs(jv(7, k2*Af/O1) * jv(-4, k2*Af/O2)), ":", c="gray", label="(7,-4) term alone")
+ax.set_xlabel("A"); ax.set_ylabel("step width ΔI"); ax.legend(fontsize=9); ax.grid(alpha=.3)
+ax.set_title("β = 10, (-1,1) step at V = 0.3 (Ω1:Ω2 = 5:8)")
+plt.show()
+
+##MD
+コヒーレント和の曲線は、第3ローブの高さまで届いています。
+
+## 9.4 反実験：Ω₂ を 0.81 にずらす
+
+「(7, −4) が同じ電圧に届くこと」が原因なら、**届かなくすれば、単項だけで合うはず**です。Ω₂ = 0.81 にすると (−1, 1) は V = 0.31、(7, −4) は V = 3.5 − 3.24 = 0.26 になり、窓 0.31 ± 0.04 から外れます。
+
+IV マップをもう一度計算します（1回目は 20 秒前後）。
+
+##CODE
+import time
+t0 = time.time()
+d81 = iv_beta10(O2=0.81)
+print(f"{time.time() - t0:.1f} 秒")
+V81 = d81["V"]
+print("(-1,1) の電圧:", -1 * 0.5 + 1 * 0.81, " (7,-4) の電圧:", 7 * 0.5 - 4 * 0.81)
+
+sw81 = np.array([extract(I, V81[:, j], 0.31, 0.02, 0.04) for j in range(A.size)])
+r81, k81, s81 = fit(sw81, A, single_k, -1, 1, O2=0.81)
+print(f"この教材の計算（Ω2=0.81, 単項）: r = {r81:.3f}, k* = {k81:.4f}, k*β = {k81*10:.3f}")
+
+##MD
+`fit(..., O2=0.81)` のように後ろに書いた引数は、`fit` を通って理論の関数 `single(..., O2=0.81)` に渡ります（`kyozai/theory.py` の `**kw`）。
+
+報告書の表1の反実験（Ω₂ = 0.81、単項）は r = 0.990、k*β = 1.023 です。
+
+##CODE
+fig, ax = plt.subplots(1, 2, figsize=(12, 4.3), sharey=True)
+ax[0].plot(A, sw, "o", c="#cc0000", ms=5, label="numerical")
+ax[0].plot(Af, s1 * single_k(-1, 1, Af, k1), "k--", label=f"single  r = {r1:.3f}")
+ax[0].set_title("Ω2 = 0.80 (commensurate 5:8)")
+ax[1].plot(A, sw81, "o", c="#cc0000", ms=5, label="numerical")
+ax[1].plot(Af, s81 * single_k(-1, 1, Af, k81, O2=0.81), "k--", label=f"single  r = {r81:.3f}")
+ax[1].set_title("Ω2 = 0.81 (detuned)")
+for a_ in ax:
+    a_.set_xlabel("A"); a_.grid(alpha=.3); a_.legend(fontsize=9)
+ax[0].set_ylabel("ΔI of (-1,1) step")
+fig.tight_layout(); plt.show()
+
+##MD
+## 9.5 この章でたどれたこと・たどれていないこと
+
+| | 報告書（研究の保存データ） | この教材の計算 |
+|---|---|---|
+| 単項 r（Ω₂ = 0.80） | 0.801 | 9.3 の出力 |
+| コヒーレント和 r（Ω₂ = 0.80） | 0.992 | 9.3 の出力 |
+| 反実験 単項 r（Ω₂ = 0.81） | 0.990 | 9.4 の出力 |
+
+- この教材で計算したのは **β = 10・(−1, 1) ステップだけ**です。報告書の表2（β ≥ 2.5 の5成分すべて）や Γ の値は、この教材では計算していません（未確認）。
+- 電流の範囲（I = 1.6〜4.2）と A の点の数（33点）は、研究の保存データと違います。
+
+## 練習問題
+
+1. `coherent` の `J`（足す項の範囲）を 0、1、4 と変えて、フィットの r を比べてください。J = 0 は何と同じですか。
+2. 9.1 の考えを使って、「j = ±1 の項が単項と直角になる」ことを、(−i) の指数 n+m+3j から説明してください。
+
+<details><summary>答え</summary>
+
+```python
+for J in [0, 1, 4]:
+    print(J, fit(sw, A, coherent_k, -1, 1, J=J)[0])
+```
+1. J = 0 は j = 0 の項だけなので単項と同じです。J = 1 でほとんどの改善が得られ、J = 4 との差は小さいはずです（(7, −4) の項が主に効くため）。
+2. j が 1 増えると指数が 3 増え、(−i)³ = i なので向きが +90° 回ります。j = −1 なら (−i)⁻³ = −i で −90°。どちらも単項と直角です。
+</details>
+
+##CODE
+for J in [0, 1, 4]:
+    print(f"J = {J}: r = {fit(sw, A, coherent_k, -1, 1, J=J)[0]:.3f}")
+
+##MD
+## まとめ
+- 複素数は向きのある矢印。直角の項は打ち消し合わずに残る。
+- 5:8 で通約なので、(−1, 1) と (7, −4) は同じ電圧に届き、コヒーレント和ではそれを位相つきで足す。
+- Ω₂ = 0.81 にずらして (7, −4) を外す反実験も、自分で計算して確かめられる。
+- 教材の計算と報告書の数値は分けて書き、計算していないことは「未確認」とする。

@@ -1,0 +1,7 @@
+numpy
+scipy
+numba
+h5py
+matplotlib
+jupyter
+nbconvert

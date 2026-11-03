@@ -1,0 +1,191 @@
+##MD
+# 第8章 SciPy でベッセル関数とフィット ―― 単項の理論と比べる
+
+**この章でできるようになること**
+- `scipy.special.jv` でベッセル関数 Jₙ(x) を計算・図示できる
+- 研究の単項理論 ΔI ∝ |Jₙ(kA/Ω₁) Jₘ(kA/Ω₂)| を関数にできる
+- 倍率を最小二乗で、k を格子探索で決め、相関係数 r で当てはまりを評価できる
+- `scipy.optimize` の最適化が「局所解」にはまることがあると知る
+
+**例え：** フィットは「**洋服の採寸**」です。理論曲線という型紙があり、倍率 sc（全体の大きさ）と k（横方向の伸び縮み）の2つのつまみで、データ（体）に合わせます。sc は計算一発で決まりますが、k は「少しずつ試着して一番合うものを選ぶ」しかありません。
+
+| 用語 | 意味 | 例え |
+|---|---|---|
+| SciPy | NumPy の上に作られた、科学計算の道具箱（特殊関数・積分・最適化など） | 工具箱 |
+| ベッセル関数 Jₙ(x) | 振動しながら小さくなっていく特別な関数。交流で揺さぶられた位相の計算に出てくる | 池に石を投げたときの、だんだん弱まる波紋 |
+| 単項理論 | ステップ幅を |Jₙ(x₁) Jₘ(x₂)| の1項だけで表す理論 | 一人の太鼓の音だけを数える |
+| k（k*） | 振幅 A を、理論の変数 x = kA/Ω に直す倍率。k* はフィットで一番よく合った値 | 型紙の横の伸び縮み |
+| 最小二乗法 | 「ずれの2乗の合計」が一番小さくなるように決める方法 | 体とのすき間が一番少ない大きさを選ぶ |
+| 相関係数 r | 2つのデータの形がどれだけ似ているか（1 に近いほど似ている） | 型紙と体の「形の似かた」の点数 |
+| 格子探索 | 候補をたくさん並べて全部試し、一番よいものを選ぶ方法 | サイズ違いを全部試着する |
+| 局所解 | 近くでは一番よいが、全体では一番ではない答え | 小さな谷を一番低い場所と思い込む |
+
+> 研究コードとのつながり：`py/coherent.py` の `single` と `fit`、研究リポジトリ `lab/式と前提.md` 5章。教材の `kyozai/theory.py` は同じ式です。
+
+##MD
+## 8.1 ベッセル関数を描く
+
+##CODE
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.special import jv
+
+x = np.linspace(0, 20, 500)
+fig, ax = plt.subplots(figsize=(7, 3.5))
+for n in range(4):
+    ax.plot(x, jv(n, x), label=f"J{n}(x)")
+ax.axhline(0, color="k", lw=0.5)
+ax.set_xlabel("x"); ax.legend(); ax.grid(alpha=.3)
+plt.show()
+
+print("J_{-1}(x) = -J_1(x) か:", np.allclose(jv(-1, x), -jv(1, x)))
+
+##MD
+ベッセル関数は振動しながら小さくなっていき、ところどころで 0 になります（**ゼロ点**）。n が負のときは **J₋ₙ(x) = (−1)ⁿ Jₙ(x)** という関係があります（上の出力で n = 1 のときを確かめました）。絶対値をとれば同じ形です。
+
+## 8.2 単項理論の曲線
+
+研究の単項理論（`lab/式と前提.md` 5.1）：
+
+$$\Delta I_{n,m} \propto |J_n(x_1)\,J_m(x_2)|,\qquad x_j = k\,A/\Omega_j$$
+
+(−1, 1) ステップについて、k を何通りか変えて形を見ます。
+
+##CODE
+O1, O2 = 0.5, 0.8
+
+def single(n, m, A, k):
+    return np.abs(jv(n, k * A / O1) * jv(m, k * A / O2))
+
+Af = np.linspace(0, 64, 600)
+fig, ax = plt.subplots(figsize=(7, 3.5))
+for k in [0.05, 0.1, 0.2]:
+    ax.plot(Af, single(-1, 1, Af, k), label=f"k = {k}")
+ax.set_xlabel("A"); ax.set_ylabel("|J_-1(kA/Ω1) J_1(kA/Ω2)|"); ax.legend(); ax.grid(alpha=.3)
+plt.show()
+
+##MD
+k を大きくすると、横に縮みます（山が A の小さいほうに寄る）。
+
+## 8.3 データを用意する
+
+第7章と同じく、β = 10 の (−1, 1) ステップ幅を取り出します。
+
+##CODE
+from kyozai.data import iv_beta10
+from kyozai.step import extract
+
+d = iv_beta10(O2=0.8)
+I, A, V = d["I"], d["A"], d["V"]
+sw = np.array([extract(I, V[:, j], 0.3, 0.02, 0.04) for j in range(A.size)])
+
+##MD
+## 8.4 倍率 sc は最小二乗で一発で決まる
+
+k を1つ決めると、理論の形 bt = |J J| が決まります。データ sw に一番近い sc·bt の倍率 sc は、ずれの2乗の和 Σ(sw − sc·bt)² を sc で微分して 0 とおくと
+
+$$sc = \frac{\sum sw \cdot bt}{\sum bt^2}$$
+
+と求まります。研究コードの `sc=(sw*bt).sum()/(bt**2).sum()` がこれです。
+
+##CODE
+k = 0.1
+bt = single(-1, 1, A, k)
+sc = (sw * bt).sum() / (bt ** 2).sum()
+r = np.corrcoef(sw, sc * bt)[0, 1]
+print(f"k = {k}: sc = {sc:.3f}, 相関 r = {r:.3f}")
+
+##MD
+`np.corrcoef(x, y)` は 2×2 の表を返し、`[0, 1]` が x と y の相関係数です。相関係数は倍率に関係しないので、`sc * bt` でも `bt` でも同じ値になります。
+
+## 8.5 k は格子探索で決める
+
+k は理論の中のベッセル関数の中にあるので、一発の式では決まりません。研究コードと同じく、0.0005〜1.3 を対数で等間隔に 600 通り試します。
+
+##CODE
+ks = np.logspace(np.log10(0.0005), np.log10(1.3), 600)
+rs = []
+for k in ks:
+    bt = single(-1, 1, A, k)
+    rs.append(np.corrcoef(sw, bt)[0, 1] if bt.std() > 0 else np.nan)
+rs = np.array(rs)
+best = np.nanargmax(rs)
+k_star = ks[best]
+print(f"一番よい k* = {k_star:.4f},  r = {rs[best]:.3f},  k*·β = {k_star * 10:.3f}")
+
+fig, ax = plt.subplots(figsize=(7, 3.5))
+ax.semilogx(ks, rs)
+ax.axvline(k_star, color="r", ls=":")
+ax.set_xlabel("k (log)"); ax.set_ylabel("correlation r"); ax.grid(alpha=.3, which="both")
+plt.show()
+
+##MD
+`np.nanargmax` は「nan を無視して、一番大きい値の番号」を返します。
+
+r の曲線には、**山がいくつもあります**。これが、次の 8.6 で見る「局所解」の問題につながります。
+
+研究の報告書の表1（β = 10 の (−1, 1)、単項）は **r = 0.801、k* = 0.1005、k*β = 1.005** です。この教材の計算（電流の範囲を狭め、A を 33 点にしたもの）でも近い値になっているか、上の出力と見比べてください。
+
+教材の部品 `kyozai.theory.fit` は、この格子探索と sc の計算をまとめたものです。
+
+##CODE
+from kyozai.theory import fit, single as single_k
+r1, k1, s1 = fit(sw, A, single_k, -1, 1)
+print(f"kyozai.theory.fit:  r = {r1:.3f},  k* = {k1:.4f},  sc = {s1:.3f}")
+
+fig, ax = plt.subplots(figsize=(8, 4.5))
+ax.plot(A, sw, "o", c="#cc0000", ms=5, label="numerical ΔI (this notebook)")
+ax.plot(Af, s1 * single_k(-1, 1, Af, k1), "k--", label=f"single |J-1 J1|, r = {r1:.3f}")
+ax.set_xlabel("A"); ax.set_ylabel("step width ΔI"); ax.legend(); ax.grid(alpha=.3)
+ax.set_title("β = 10, (-1,1) step at V = 0.3")
+plt.show()
+
+##MD
+1つ目・2つ目の山はよく合っていますが、**A ≈ 40〜50 の3つ目の山は、データのほうがずっと高い**ことがわかります。これが報告書の言う「第3ローブが高すぎる」です。
+
+## 8.6 scipy.optimize を使うと？
+
+「格子探索は手間がかかるので、最適化の関数に任せたい」と思うかもしれません。`scipy.optimize.minimize_scalar` で「1 − r」を小さくしてみます。
+
+##CODE
+from scipy.optimize import minimize_scalar
+
+def loss(logk):
+    bt = single(-1, 1, A, 10 ** logk)
+    return 1 - np.corrcoef(sw, bt)[0, 1] if bt.std() > 0 else 2.0
+
+for start in [(-3, -2.5), (-1.2, -0.9), (-0.5, 0.0)]:
+    res = minimize_scalar(loss, bracket=start)
+    print(f"探しはじめ {start} → k = {10**res.x:.4f}, r = {1 - res.fun:.3f}")
+
+##MD
+探しはじめる場所によって、違う答えに落ち着きます。最適化の関数は「今いる谷の底」を探すので、**r の曲線に山（谷）がたくさんあると、全体で一番よい答えを見のがす**ことがあります（局所解）。研究コードが k を600通り全部試しているのは、このためです。
+
+## 練習問題
+
+1. (−1, 1) ではなく、架空に「(0, 1) の理論」|J₀(x₁) J₁(x₂)| で同じデータをフィットすると r はいくつになりますか。ステップの種類を取り違えると当てはまりが悪くなることを確かめてください。
+2. `ks` の点の数を 600 から 60 に減らすと、k* と r はどう変わりますか。
+
+<details><summary>答え</summary>
+
+```python
+# 1.
+print(fit(sw, A, single_k, 0, 1))
+# 2.
+ks60 = np.logspace(np.log10(0.0005), np.log10(1.3), 60)
+print(fit(sw, A, single_k, -1, 1, ks=ks60))
+```
+1. の r は (−1, 1) の理論より低くなります。2. は格子が粗くなるので、k* がずれ、r も少し下がることがあります。
+</details>
+
+##CODE
+print("(0,1) の理論で:", np.round(fit(sw, A, single_k, 0, 1), 4))
+ks60 = np.logspace(np.log10(0.0005), np.log10(1.3), 60)
+print("格子 60 点で  :", np.round(fit(sw, A, single_k, -1, 1, ks=ks60), 4))
+
+##MD
+## まとめ
+- `scipy.special.jv(n, x)` でベッセル関数。単項理論は |Jₙ(kA/Ω₁) Jₘ(kA/Ω₂)|。
+- 倍率 sc は最小二乗の式で一発、k は格子探索で決める。当てはまりは相関係数 r で見る。
+- 最適化の関数は局所解にはまることがある。山がたくさんあるときは、格子探索が確実。
+- β = 10 の (−1, 1) では、単項理論は第3ローブを低く見積もる。次の章でその理由を追う。
